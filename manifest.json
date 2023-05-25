@@ -1,0 +1,16 @@
+{
+  "name": "paypalcp-checkout-ui-settings",
+  "vendor": "vtex",
+  "version": "0.0.1",
+  "title": "PayPalCP Checkout UI Settings",
+  "description": "Adds PayPal Smart Payment Buttons into Checkout v6",
+  "builders": {
+    "checkout-ui-custom": "0.x",
+    "docs": "0.x"
+  },
+  "peerDependencies": {
+    "vtex.connector-paypal-commerce-platform": "0.x"
+  },
+  "policies": [],
+  "$schema": "https://raw.githubusercontent.com/vtex/node-vtex-api/master/gen/manifest.schema"
+}

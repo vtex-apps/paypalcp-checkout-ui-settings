@@ -1,0 +1,139 @@
+---
+base:
+  secrets:
+    enabled: true
+    name: VTEX_QE
+  vtex:
+    account: productusqa
+    id: 2001459804
+    domain: myvtex.com
+    urlExternalSeller: https://productusqaseller.myvtex.com
+    vtexIdUrl: https://vtexid.vtex.com.br/api/vtexid/pub/authenticate/default
+  jira:
+    enabled: true
+    account: vtex-dev
+    board: PAYPAL
+    issueType: Bug
+    priority: High
+    testing: true
+  slack:
+    enabled: false
+    channel: some-channel
+  cypress:
+    devMode: false
+    runHeaded: false
+    getCookies: true
+    projectId: 8grjhu
+    maxJobs: 3
+    quiet: true
+    video: false
+    videoCompression: false
+    videoUploadOnPasses: false
+    screenshotOnRunFailure: true
+    trashAssetsBeforeRuns: false
+    viewportWidth: 1440
+    viewportHeight: 900
+    defaultCommandTimeout: 25000
+    requestTimeout: 25000
+    watchForFileChanges: false
+    pageLoadTimeout: 45000
+    browser: chrome
+    chromeWebSecurity: false
+  stateFiles:
+    - .orders.json
+
+workspace:
+  name: random
+  prefix: paypal
+  linkApp:
+    enabled: true
+  installApps:
+    - vtex.checkout@1.x
+    - vtex.checkout-cart@0.x
+  removeApps: []
+  wipe:
+    enabled: true
+    stopOnFail: false
+    specs:
+      - cypress/integration/wipe.spec.js
+  teardown:
+    enabled: true
+
+strategy:
+  configPaypal:
+    enabled: true
+    sendDashboard: true
+    hardTries: 1
+    stopOnFail: true
+    parallel: false
+    specs:
+      - cypress/integration/post_setup.spec.js
+  disableAutoSettlement:
+    enabled: true
+    sendDashboard: true
+    hardTries: 1
+    stopOnFail: false
+    parallel: false
+    specs:
+      - cypress/integration/disable_auto_settlement.spec.js
+    dependency:
+      - cypress/integration/post_setup.spec.js
+  discountProduct:
+    enabled: true
+    sendDashboard: true
+    hardTries: 1
+    stopOnFail: false
+    parallel: false
+    specs:
+      - cypress/integration/2.3-discountProduct.spec.js
+    dependency:
+      - cypress/integration/disable_auto_settlement.spec.js
+  enableAutoSettlement:
+    enabled: true
+    sendDashboard: true
+    hardTries: 1
+    stopOnFail: false
+    parallel: false
+    specs:
+      - cypress/integration/enable_auto_settlement.spec.js
+    dependency:
+       - cypress/integration/2.3-discountProduct.spec.js
+  testPaypal:
+    enabled: true
+    sendDashboard: true
+    hardTries: 2
+    stopOnFail: false
+    parallel: true
+    specs:
+      - cypress/integration/2.1-singleproduct.spec.js
+      - cypress/integration/2.2-multiproduct.spec.js
+      - cypress/integration/2.4-discountShipping.spec.js
+      - cypress/integration/2.5-externalSeller.spec.js
+    dependency:
+      - cypress/integration/enable_auto_settlement.spec.js
+  transactions:
+    enabled: false
+    sendDashboard: true
+    hardTries: 2
+    stopOnFail: false
+    parallel: false
+    specs:
+      - cypress/integration/2.6-transactions.spec.js
+    dependency:
+      - cypress/integration/2.1-singleproduct.spec.js
+      - cypress/integration/2.2-multiproduct.spec.js
+      - cypress/integration/2.3-discountProduct.spec.js
+      - cypress/integration/2.4-discountShipping.spec.js
+      - cypress/integration/2.5-externalSeller.spec.js
+  refund:
+    enabled: true
+    sendDashboard: true
+    hardTries: 3
+    stopOnFail: false
+    parallel: true
+    specs:
+      - cypress/integration/2.7-fullRefund.spec.js
+      - cypress/integration/2.8-partialRefund.spec.js
+    dependency:
+      - cypress/integration/2.1-singleproduct.spec.js
+      - cypress/integration/2.2-multiproduct.spec.js
