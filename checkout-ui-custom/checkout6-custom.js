@@ -377,6 +377,13 @@ const COMPLETE_ORDER_MUTATION = `mutation CompleteOrder($orderFormId: String!, $
   }
   `
 
+const ORDERFORM_QUERY = `query getOrderForm($orderFormId: ID) {
+    orderForm(orderFormId: $orderFormId, refreshOutdatedData: true)
+      @context(provider: "vtex.checkout-graphql", scope: "private") {
+      ${OrderFormFragment}
+    }
+  }`
+
 const ESTIMATE_SHIPPING_MUTATION = `mutation estimateShipping($addressInput: AddressInput) {
     estimateShipping(address: $addressInput)
       @context(provider: "vtex.checkout-graphql") {
@@ -420,7 +427,7 @@ const generateItemsArray = (orderForm, currency) => {
         value: item.isGift ? '0.00' : (item.price / 100).toFixed(2),
         currency_code: currency,
       },
-      quantity: item.quantity,
+      quantity: item.quantity * item.unitMultiplier,
       description,
       sku: item.id,
     }
@@ -431,12 +438,15 @@ const generateItemsArray = (orderForm, currency) => {
   return returnArray
 }
 
-const generateShippingOptions = (orderForm, currency) => {
-  if (!orderForm?.shipping?.deliveryOptions?.length) {
+const generateShippingOptions = (orderForm, currency, pickupEnabled) => {
+  if (
+    !orderForm?.shipping?.deliveryOptions?.length &&
+    (!pickupEnabled || !orderForm?.shipping?.pickupOptions?.length)
+  ) {
     return []
   }
 
-  return orderForm.shipping.deliveryOptions.map((option) => {
+  const shippingOptions = orderForm.shipping.deliveryOptions.map((option) => {
     return {
       id: option.id,
       label: option.id,
@@ -448,6 +458,33 @@ const generateShippingOptions = (orderForm, currency) => {
       },
     }
   })
+
+  const pickupOptions = pickupEnabled
+    ? orderForm.shipping.pickupOptions.map((option) => {
+        return {
+          id: option.id,
+          label: option.friendlyName,
+          type: 'PICKUP',
+          selected: option.isSelected,
+          amount: {
+            value: (option.price / 100).toFixed(2),
+            currency_code: currency,
+          },
+        }
+      })
+    : []
+
+  return [...pickupOptions, ...shippingOptions]
+}
+
+const getSelectedPickupLocation = (orderForm) => {
+  if (!orderForm?.shipping?.pickupOptions?.length) {
+    return null
+  }
+
+  return orderForm.shipping.pickupOptions.filter(
+    (option) => option.isSelected
+  )[0]
 }
 
 const generateBreakdown = (totalizers, currency) => {
@@ -522,16 +559,15 @@ const generateBreakdown = (totalizers, currency) => {
 
   window.payPalSettings = window.payPalSettings || payPalSettings
 
-  const handleShippingUpdate = async (data, rootPath) => {
-    const {
-      shipping_address: { city, country_code, postal_code, state },
-    } = data
+  const handleShippingUpdate = async (address, rootPath) => {
+    const { city, country_code, postal_code, state } = address
 
-    const countryCode = await fetch(
-      `${rootPath}${ISO3_ENDPOINT}${country_code}`
-    )
-      .then((response) => response.json())
-      .then((response) => response.code)
+    const countryCode =
+      country_code.length === 2
+        ? await fetch(`${rootPath}${ISO3_ENDPOINT}${country_code}`)
+            .then((response) => response.json())
+            .then((response) => response.code)
+        : country_code
 
     const addressInput = {
       neighborhood: 'N/A',
@@ -551,7 +587,7 @@ const generateBreakdown = (totalizers, currency) => {
     })
   }
 
-  const handleSelectDeliveryOption = async (data, rootPath) => {
+  const handleSelectShippingOption = async (data, rootPath) => {
     const { selected_shipping_option } = data
 
     if (selected_shipping_option.type === 'PICKUP') {
@@ -573,6 +609,57 @@ const generateBreakdown = (totalizers, currency) => {
     })
   }
 
+  const checkSelectedShippingOption = async (
+    currentOrderForm,
+    enablePickup,
+    rootPath
+  ) => {
+    if (
+      enablePickup ||
+      !currentOrderForm?.shipping?.deliveryOptions?.length ||
+      currentOrderForm.shipping.deliveryOptions.some((opt) => opt.isSelected)
+    ) {
+      return currentOrderForm
+    }
+
+    const {
+      city,
+      country: country_code,
+      postalCode: postal_code,
+      state,
+    } = currentOrderForm.shipping.selectedAddress
+
+    await handleShippingUpdate(
+      {
+        city,
+        country_code,
+        postal_code,
+        state,
+      },
+      rootPath
+    )
+
+    return fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        query: SELECT_DELIVERY_OPTION_MUTATION,
+        variables: {
+          deliveryOptionId: currentOrderForm.shipping.deliveryOptions[0].id,
+        },
+      }),
+    })
+      .then((response) => response.json())
+      .then(({ data: selectResult }) => {
+        const newOrderForm = selectResult?.selectDeliveryOption
+
+        if (!newOrderForm) {
+          return currentOrderForm
+        }
+
+        return newOrderForm
+      })
+  }
+
   const renderButtons = async () => {
     if (typeof paypal === 'undefined') {
       return
@@ -588,8 +675,10 @@ const generateBreakdown = (totalizers, currency) => {
       immediateCapture,
       sellerEmail,
       merchantId,
+      enablePickup = false,
     } = window.payPalSettings
 
+    const { orderFormId } = vtexjs.checkout
     const currency = vtexjs.checkout.orderForm.storePreferencesData.currencyCode
 
     paypal
@@ -601,51 +690,80 @@ const generateBreakdown = (totalizers, currency) => {
           ...(layout === 'horizontal' ? { tagline: showTagline } : {}),
         },
         createOrder(_data, _actions) {
-          const { orderForm } = vtexjs.checkout
-          const items = generateItemsArray(orderForm, currency)
-
-          if (!items.length) return null
-
-          const shippingOptions = generateShippingOptions(orderForm, currency)
-          const breakdown = generateBreakdown(orderForm.totalizers, currency)
-
           return fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
             method: 'POST',
             body: JSON.stringify({
-              query: CREATE_ORDER_MUTATION,
+              query: ORDERFORM_QUERY,
               variables: {
-                input: {
-                  intent: immediateCapture ? 'CAPTURE' : 'AUTHORIZE',
-                  amount: {
-                    value: (orderForm.value / 100).toFixed(2),
-                    currency_code: currency,
-                    breakdown,
-                  },
-                  payee: {
-                    email_address: sellerEmail,
-                    merchant_id: merchantId,
-                  },
-                  items,
-                  shipping: {
-                    options:
-                      shippingOptions && shippingOptions.length > 0
-                        ? shippingOptions
-                        : null,
-                  },
-                },
+                orderFormId,
               },
             }),
           })
             .then((response) => response.json())
             .then(({ data }) => {
-              if (!data) return null
+              const { orderForm } = data
 
-              return data.createOrder
+              return checkSelectedShippingOption(
+                orderForm,
+                enablePickup,
+                rootPath
+              ).then((newOrderForm) => {
+                const items = generateItemsArray(newOrderForm, currency)
+
+                if (!items.length) return null
+
+                const shippingOptions = generateShippingOptions(
+                  newOrderForm,
+                  currency,
+                  enablePickup
+                )
+
+                const breakdown = generateBreakdown(
+                  newOrderForm.totalizers,
+                  currency
+                )
+
+                return fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    query: CREATE_ORDER_MUTATION,
+                    variables: {
+                      input: {
+                        intent: immediateCapture ? 'CAPTURE' : 'AUTHORIZE',
+                        amount: {
+                          value: (newOrderForm.value / 100).toFixed(2),
+                          currency_code: currency,
+                          breakdown,
+                        },
+                        payee: {
+                          email_address: sellerEmail,
+                          merchant_id: merchantId,
+                        },
+                        items,
+                        shipping: {
+                          options:
+                            shippingOptions && shippingOptions.length > 0
+                              ? shippingOptions
+                              : null,
+                        },
+                      },
+                    },
+                  }),
+                })
+                  .then((response) => response.json())
+                  .then(({ data: newData }) => {
+                    if (!newData) return null
+
+                    return newData.createOrder
+                  })
+              })
             })
         },
         onShippingChange(data, actions) {
+          const { shipping_address } = data
+
           // always run the shipping estimate mutation to make sure we have the latest orderForm
-          return handleShippingUpdate(data, rootPath)
+          return handleShippingUpdate(shipping_address, rootPath)
             .then((response) => response.json())
             .then(({ data: result }) => {
               if (!result) {
@@ -660,7 +778,10 @@ const generateBreakdown = (totalizers, currency) => {
 
               const { shipping, totalizers } = newOrderForm
 
-              if (!shipping?.deliveryOptions?.length) {
+              if (
+                !shipping?.deliveryOptions?.length &&
+                !shipping?.pickupOptions?.length
+              ) {
                 return actions.reject()
               }
 
@@ -669,7 +790,8 @@ const generateBreakdown = (totalizers, currency) => {
               if (!newItems?.length) return actions.reject()
 
               // if the selected shipping option in paypal hasn't been selected in VTEX,
-              // select it and then patch the paypal order with the new orderForm data
+              // select it and then patch the paypal order with the new orderForm data.
+              // This conditional is for delivery options, see below for pickup
               if (
                 data.selected_shipping_option?.id &&
                 shipping.deliveryOptions.find(
@@ -680,7 +802,7 @@ const generateBreakdown = (totalizers, currency) => {
                     !option.isSelected
                 )
               ) {
-                return handleSelectDeliveryOption(data, rootPath)
+                return handleSelectShippingOption(data, rootPath)
                   .then((response) => response.json())
                   .then(({ data: selectResult }) => {
                     if (!selectResult) {
@@ -697,7 +819,8 @@ const generateBreakdown = (totalizers, currency) => {
 
                     const newShippingOptions = generateShippingOptions(
                       newOrderForm,
-                      currency
+                      currency,
+                      enablePickup
                     )
 
                     const newBreakdown = generateBreakdown(
@@ -740,12 +863,111 @@ const generateBreakdown = (totalizers, currency) => {
                   })
               }
 
+              // pickup
+              if (
+                data.selected_shipping_option?.id &&
+                shipping.pickupOptions?.find(
+                  (option) =>
+                    option.id === data.selected_shipping_option.id &&
+                    (option.price / 100).toFixed(2) ===
+                      data.selected_shipping_option.amount.value &&
+                    !option.isSelected
+                )
+              ) {
+                return handleSelectShippingOption(data, rootPath)
+                  .then((response) => response.json())
+                  .then(({ data: selectResult }) => {
+                    if (!selectResult) {
+                      return actions.reject()
+                    }
+
+                    newOrderForm = selectResult.selectPickupOption
+
+                    if (!newOrderForm) {
+                      return actions.reject()
+                    }
+
+                    const { totalizers: newTotalizers } = newOrderForm
+
+                    const newShippingOptions = generateShippingOptions(
+                      newOrderForm,
+                      currency,
+                      enablePickup
+                    )
+
+                    const newBreakdown = generateBreakdown(
+                      newTotalizers,
+                      currency
+                    )
+
+                    const pickupLocation = getSelectedPickupLocation(
+                      newOrderForm
+                    )
+
+                    if (!pickupLocation) {
+                      return actions.reject()
+                    }
+
+                    const input = {
+                      orderId: data.orderID,
+                      amount: {
+                        value: (newOrderForm.value / 100).toFixed(2),
+                        currency_code: currency,
+                        breakdown: newBreakdown,
+                      },
+                      payee: {
+                        email_address: sellerEmail,
+                        merchant_id: merchantId,
+                      },
+                      items: newItems,
+                      shipping: {
+                        options: newShippingOptions,
+                        name: {
+                          full_name: `S2S ${pickupLocation.friendlyName}`,
+                        },
+                        address: {
+                          address_line_1: pickupLocation.address.street,
+                          admin_area_2: pickupLocation.address.city,
+                          admin_area_1: pickupLocation.address.state,
+                          postal_code: pickupLocation.address.postalCode,
+                          country_code: data.shipping_address.country_code,
+                        },
+                      },
+                    }
+
+                    return fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        query: UPDATE_ORDER_MUTATION,
+                        variables: { input },
+                      }),
+                    })
+                      .then((response) => response.json())
+                      .then(({ data: updateOrderResult }) => {
+                        if (!updateOrderResult?.updateOrder) {
+                          return actions.reject()
+                        }
+
+                        return actions.resolve()
+                      })
+                  })
+              }
+
               const newShippingOptions = generateShippingOptions(
                 newOrderForm,
-                currency
+                currency,
+                enablePickup
               )
 
               const newBreakdown = generateBreakdown(totalizers, currency)
+
+              const isPickup = data.selected_shipping_option?.type === 'PICKUP'
+
+              const pickupLocation = getSelectedPickupLocation(newOrderForm)
+
+              if (isPickup && !pickupLocation) {
+                return actions.reject()
+              }
 
               const input = {
                 orderId: data.orderID,
@@ -761,6 +983,18 @@ const generateBreakdown = (totalizers, currency) => {
                 items: newItems,
                 shipping: {
                   options: newShippingOptions,
+                  ...(isPickup && {
+                    name: {
+                      full_name: `S2S ${pickupLocation.friendlyName}`,
+                    },
+                    address: {
+                      address_line_1: pickupLocation.address.street,
+                      admin_area_2: pickupLocation.address.city,
+                      admin_area_1: pickupLocation.address.state,
+                      postal_code: pickupLocation.address.postalCode,
+                      country_code: data.shipping_address.country_code,
+                    },
+                  }),
                 },
               }
 
@@ -786,7 +1020,6 @@ const generateBreakdown = (totalizers, currency) => {
         },
         onApprove(data) {
           vtex.checkout.MessageUtils.showPaymentMessage()
-          const { orderFormId } = vtexjs.checkout
 
           fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
             method: 'POST',
