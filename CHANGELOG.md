@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reset selected shipping option when PayPal UI is opened
+- Refetch orderForm in checkout if PayPal UI is closed
+
 ## [0.1.0] - 2023-07-03
 
 ### Added

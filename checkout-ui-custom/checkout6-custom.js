@@ -609,13 +609,8 @@ const generateBreakdown = (totalizers, currency) => {
     })
   }
 
-  const checkSelectedShippingOption = async (
-    currentOrderForm,
-    enablePickup,
-    rootPath
-  ) => {
+  const checkSelectedShippingOption = async (currentOrderForm, rootPath) => {
     if (
-      enablePickup ||
       !currentOrderForm?.shipping?.deliveryOptions?.length ||
       currentOrderForm.shipping.deliveryOptions.some((opt) => opt.isSelected)
     ) {
@@ -703,60 +698,58 @@ const generateBreakdown = (totalizers, currency) => {
             .then(({ data }) => {
               const { orderForm } = data
 
-              return checkSelectedShippingOption(
-                orderForm,
-                enablePickup,
-                rootPath
-              ).then((newOrderForm) => {
-                const items = generateItemsArray(newOrderForm, currency)
+              return checkSelectedShippingOption(orderForm, rootPath).then(
+                (newOrderForm) => {
+                  const items = generateItemsArray(newOrderForm, currency)
 
-                if (!items.length) return null
+                  if (!items.length) return null
 
-                const shippingOptions = generateShippingOptions(
-                  newOrderForm,
-                  currency,
-                  enablePickup
-                )
+                  const shippingOptions = generateShippingOptions(
+                    newOrderForm,
+                    currency,
+                    enablePickup
+                  )
 
-                const breakdown = generateBreakdown(
-                  newOrderForm.totalizers,
-                  currency
-                )
+                  const breakdown = generateBreakdown(
+                    newOrderForm.totalizers,
+                    currency
+                  )
 
-                return fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    query: CREATE_ORDER_MUTATION,
-                    variables: {
-                      input: {
-                        intent: immediateCapture ? 'CAPTURE' : 'AUTHORIZE',
-                        amount: {
-                          value: (newOrderForm.value / 100).toFixed(2),
-                          currency_code: currency,
-                          breakdown,
-                        },
-                        payee: {
-                          email_address: sellerEmail,
-                          merchant_id: merchantId,
-                        },
-                        items,
-                        shipping: {
-                          options:
-                            shippingOptions && shippingOptions.length > 0
-                              ? shippingOptions
-                              : null,
+                  return fetch(`${rootPath}${GRAPHQL_ENDPOINT}`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      query: CREATE_ORDER_MUTATION,
+                      variables: {
+                        input: {
+                          intent: immediateCapture ? 'CAPTURE' : 'AUTHORIZE',
+                          amount: {
+                            value: (newOrderForm.value / 100).toFixed(2),
+                            currency_code: currency,
+                            breakdown,
+                          },
+                          payee: {
+                            email_address: sellerEmail,
+                            merchant_id: merchantId,
+                          },
+                          items,
+                          shipping: {
+                            options:
+                              shippingOptions && shippingOptions.length > 0
+                                ? shippingOptions
+                                : null,
+                          },
                         },
                       },
-                    },
-                  }),
-                })
-                  .then((response) => response.json())
-                  .then(({ data: newData }) => {
-                    if (!newData) return null
-
-                    return newData.createOrder
+                    }),
                   })
-              })
+                    .then((response) => response.json())
+                    .then(({ data: newData }) => {
+                      if (!newData) return null
+
+                      return newData.createOrder
+                    })
+                }
+              )
             })
         },
         onShippingChange(data, actions) {
@@ -1074,6 +1067,11 @@ const generateBreakdown = (totalizers, currency) => {
               vtex.checkout.MessageUtils.hidePaymentMessage()
               vtex.checkout.MessageUtils.showPaymentUnauthorizedMessage()
             })
+        },
+        onCancel() {
+          vtexjs.checkout
+            .getOrderForm()
+            .then(() => console.info('User closed PayPal Checkout'))
         },
       })
       .render('#paypal-button-container')
