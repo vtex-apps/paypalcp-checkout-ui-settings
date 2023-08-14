@@ -1099,6 +1099,7 @@ const generateBreakdown = (totalizers, currency) => {
       merchantId,
       immediateCapture,
       disablePayPalCredit,
+      disableCards,
     } = window.payPalSettings
 
     const orderForm = await vtexjs.checkout.getOrderForm()
@@ -1106,11 +1107,20 @@ const generateBreakdown = (totalizers, currency) => {
 
     const script = document.createElement('script')
 
+    const disabledPayments = []
+
+    if (disableCards) disabledPayments.push('card')
+    if (disablePayPalCredit) disabledPayments.push('credit')
+
     script.src = `https://www.paypal.com/sdk/js?client-id=${
       production ? productionClientId : sandboxClientId
     }&merchant-id=${merchantId}&currency=${currency}&intent=${
       immediateCapture ? 'capture' : 'authorize'
-    }&commit=true${disablePayPalCredit ? `&disable-funding=credit` : ``}`
+    }&commit=true${
+      disabledPayments.length
+        ? `&disable-funding=${disabledPayments.join(',')}`
+        : ``
+    }`
     script.setAttribute(
       'data-partner-attribution-id',
       production ? productionBNCode : sandboxBNCode
