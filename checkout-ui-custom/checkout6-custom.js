@@ -656,7 +656,10 @@ const generateBreakdown = (totalizers, currency) => {
   }
 
   const renderButtons = async () => {
-    if (typeof paypal === 'undefined') {
+    if (
+      typeof paypal === 'undefined' ||
+      $('#paypal-button-container').children().length
+    ) {
       return
     }
 
