@@ -680,7 +680,7 @@ const generateBreakdown = (totalizers, currency) => {
     } = window.payPalSettings
 
     const { orderFormId } = vtexjs.checkout
-    const currency = vtexjs.checkout.orderForm.storePreferencesData.currencyCode
+    const currency = window?.vtexjs?.checkout?.orderForm?.storePreferencesData?.currencyCode || 'USD'
 
     paypal
       .Buttons({
