@@ -656,16 +656,12 @@ const generateBreakdown = (totalizers, currency) => {
   }
 
   const renderButtons = async () => {
-    // console.log("typeof paypal: ",typeof paypal,"paypal children length: ",$('#paypal-button-container').children().length)
-    // if (typeof paypal === 'undefined'){
     if (
       typeof paypal === 'undefined' ||
       $('#paypal-button-container').children().length
     ) {
-      // console.log("joined the if to no re-render")
       return
     }
-    // console.log("the button is going to be rendered")
     const rootPath = window?.vtex?.renderRuntime?.rootPath ?? ''
 
     const {
@@ -1090,7 +1086,6 @@ const generateBreakdown = (totalizers, currency) => {
       return
     }
     const [buttonContainer] = document.getElementsByClassName('cart-links')
-    // should check if the div already exists
     const paypalDiv = document.createElement('div')
 
     paypalDiv.id = 'paypal-button-container'
@@ -1113,7 +1108,6 @@ const generateBreakdown = (totalizers, currency) => {
       disableCards,
     } = window.payPalSettings
 
-    // const orderForm = await vtexjs.checkout.getOrderForm()
     const currency = window?.vtexjs?.checkout?.orderForm?.storePreferencesData?.currencyCode || 'USD'
 
     const script = document.createElement('script')
