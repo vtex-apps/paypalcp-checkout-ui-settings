@@ -662,7 +662,6 @@ const generateBreakdown = (totalizers, currency) => {
     ) {
       return
     }
-
     const rootPath = window?.vtex?.renderRuntime?.rootPath ?? ''
 
     const {
@@ -677,7 +676,7 @@ const generateBreakdown = (totalizers, currency) => {
     } = window.payPalSettings
 
     const { orderFormId } = vtexjs.checkout
-    const currency = vtexjs.checkout.orderForm.storePreferencesData.currencyCode
+    const currency = window?.vtexjs?.checkout?.orderForm?.storePreferencesData?.currencyCode || 'USD'
 
     paypal
       .Buttons({
@@ -1081,8 +1080,12 @@ const generateBreakdown = (totalizers, currency) => {
   }
 
   const createDiv = () => {
+    if (
+      $('#paypal-button-container').size()
+    ) {
+      return
+    }
     const [buttonContainer] = document.getElementsByClassName('cart-links')
-
     const paypalDiv = document.createElement('div')
 
     paypalDiv.id = 'paypal-button-container'
@@ -1105,8 +1108,7 @@ const generateBreakdown = (totalizers, currency) => {
       disableCards,
     } = window.payPalSettings
 
-    const orderForm = await vtexjs.checkout.getOrderForm()
-    const currency = orderForm.storePreferencesData.currencyCode
+    const currency = window?.vtexjs?.checkout?.orderForm?.storePreferencesData?.currencyCode || 'USD'
 
     const script = document.createElement('script')
 
@@ -1197,5 +1199,10 @@ const generateBreakdown = (totalizers, currency) => {
     }
   }, 500)
 
-  $(window).on('hashchange', () => initializePayPal())
+
+  $(window).on("orderFormUpdated.vtex", function(evt, orderForm) {
+    initializePayPal()
+  })
+
 })()
+  
