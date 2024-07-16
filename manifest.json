@@ -1,7 +1,7 @@
 {
   "name": "paypalcp-checkout-ui-settings",
   "vendor": "vtex",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "title": "PayPalCP Checkout UI Settings",
   "description": "Adds PayPal Smart Payment Buttons into Checkout v6",
   "builders": {
