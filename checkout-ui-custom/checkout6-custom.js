@@ -1204,5 +1204,5 @@ const generateBreakdown = (totalizers, currency) => {
     initializePayPal()
   })
 
-})()
+})();
   
